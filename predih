@@ -3,7 +3,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local Camera = workspace.CurrentCamera
-
 local LP = Players.LocalPlayer
 
 --// STATE
@@ -15,21 +14,21 @@ local skeletonESPEnabled = false
 
 local stickyTarget = nil
 local predictionTime = 0.15
-local humanRobotValue = 50 -- 0 = human, 100 = robot
+local humanRobotValue = 50
 
 --// UI =========================================================
 local gui = Instance.new("ScreenGui", LP.PlayerGui)
 gui.ResetOnSpawn = false
 
 local main = Instance.new("Frame", gui)
-main.Size = UDim2.fromOffset(380, 320)
+main.Size = UDim2.fromOffset(380, 330)
 main.Position = UDim2.fromScale(0.5,0.5)
 main.AnchorPoint = Vector2.new(0.5,0.5)
 main.BackgroundColor3 = Color3.fromRGB(15,15,15)
 main.BorderSizePixel = 0
 Instance.new("UICorner", main).CornerRadius = UDim.new(0,12)
 
--- Dragging
+-- Drag
 do
     local drag, start, pos
     main.InputBegan:Connect(function(i)
@@ -57,6 +56,15 @@ UIS.InputBegan:Connect(function(i,gp)
     end
 end)
 
+-- Sticky toggle key (T)
+UIS.InputBegan:Connect(function(i,gp)
+    if gp then return end
+    if i.KeyCode == Enum.KeyCode.T then
+        stickyEnabled = not stickyEnabled
+        if not stickyEnabled then stickyTarget = nil end
+    end
+end)
+
 -- Tabs
 local tabBar = Instance.new("Frame", main)
 tabBar.Size = UDim2.fromScale(1,0.14)
@@ -78,7 +86,6 @@ end
 local aimTab = tab("AIM",0)
 local espTab = tab("ESP",0.5)
 
--- Frames
 local AimFrame = Instance.new("Frame", main)
 AimFrame.Position = UDim2.fromScale(0,0.14)
 AimFrame.Size = UDim2.fromScale(1,0.86)
@@ -88,7 +95,6 @@ local ESPFrame = AimFrame:Clone()
 ESPFrame.Parent = main
 ESPFrame.Visible = false
 
--- Helpers
 local function button(parent,text,y)
     local b = Instance.new("TextButton", parent)
     b.Size = UDim2.fromScale(0.9,0.12)
@@ -104,51 +110,13 @@ end
 
 -- AIM UI
 local aimBtn = button(AimFrame,"AIM: OFF",0.05)
-local stickyBtn = button(AimFrame,"STICKY: OFF",0.20)
-
--- Human vs Robot Slider
-local hrLabel = Instance.new("TextLabel", AimFrame)
-hrLabel.Size = UDim2.fromScale(0.9,0.08)
-hrLabel.Position = UDim2.fromScale(0.05,0.36)
-hrLabel.BackgroundTransparency = 1
-hrLabel.Text = "HUMAN ↔ ROBOT: 50"
-hrLabel.Font = Enum.Font.Gotham
-hrLabel.TextScaled = true
-hrLabel.TextColor3 = Color3.new(1,1,1)
-
-local hrBar = Instance.new("Frame", AimFrame)
-hrBar.Size = UDim2.fromScale(0.9,0.05)
-hrBar.Position = UDim2.fromScale(0.05,0.46)
-hrBar.BackgroundColor3 = Color3.fromRGB(30,30,30)
-Instance.new("UICorner", hrBar)
-
-local hrFill = Instance.new("Frame", hrBar)
-hrFill.Size = UDim2.fromScale(0.5,1)
-hrFill.BackgroundColor3 = Color3.fromRGB(255,255,255)
-Instance.new("UICorner", hrFill)
-
-local dragging = false
-hrBar.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
-end)
-UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-end)
-UIS.InputChanged:Connect(function(i)
-    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-        local p = math.clamp((i.Position.X-hrBar.AbsolutePosition.X)/hrBar.AbsoluteSize.X,0,1)
-        hrFill.Size = UDim2.fromScale(p,1)
-        humanRobotValue = math.floor(p*100)
-        hrLabel.Text = "HUMAN ↔ ROBOT: "..humanRobotValue
-    end
-end)
+local stickyBtn = button(AimFrame,"STICKY (T): OFF",0.20)
 
 -- ESP UI
 local espBtn = button(ESPFrame,"ESP: OFF",0.05)
 local nameBtn = button(ESPFrame,"NAME ESP: ON",0.20)
 local skelBtn = button(ESPFrame,"SKELETON ESP: OFF",0.35)
 
--- Tabs logic
 aimTab.MouseButton1Click:Connect(function()
     AimFrame.Visible = true
     ESPFrame.Visible = false
@@ -158,7 +126,6 @@ espTab.MouseButton1Click:Connect(function()
     ESPFrame.Visible = true
 end)
 
--- Toggles
 aimBtn.MouseButton1Click:Connect(function()
     aimEnabled = not aimEnabled
     aimBtn.Text = aimEnabled and "AIM: ON" or "AIM: OFF"
@@ -166,59 +133,8 @@ end)
 
 stickyBtn.MouseButton1Click:Connect(function()
     stickyEnabled = not stickyEnabled
-    stickyBtn.Text = stickyEnabled and "STICKY: ON" or "STICKY: OFF"
+    stickyBtn.Text = stickyEnabled and "STICKY (T): ON" or "STICKY (T): OFF"
     if not stickyEnabled then stickyTarget = nil end
-end)
-
-espBtn.MouseButton1Click:Connect(function()
-    espEnabled = not espEnabled
-    espBtn.Text = espEnabled and "ESP: ON" or "ESP: OFF"
-end)
-
-nameBtn.MouseButton1Click:Connect(function()
-    nameESPEnabled = not nameESPEnabled
-    nameBtn.Text = nameESPEnabled and "NAME ESP: ON" or "NAME ESP: OFF"
-end)
-
-skelBtn.MouseButton1Click:Connect(function()
-    skeletonESPEnabled = not skeletonESPEnabled
-    skelBtn.Text = skeletonESPEnabled and "SKELETON ESP: ON" or "SKELETON ESP: OFF"
-end)
-
---// TARGETING ==================================================
-local function getClosest()
-    local best, dist = nil, math.huge
-    for _,p in pairs(Players:GetPlayers()) do
-        if p ~= LP and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local v,on = Camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
-            if on then
-                local d = (Vector2.new(v.X,v.Y)-UIS:GetMouseLocation()).Magnitude
-                if d < dist then dist = d best = p end
-            end
-        end
-    end
-    return best
-end
-
---// CAMERA ASSIST + PREDICTION ================================
-RunService.RenderStepped:Connect(function()
-    if not aimEnabled then return end
-
-    if not (stickyEnabled and stickyTarget and stickyTarget.Character) then
-        stickyTarget = getClosest()
-    end
-
-    if not stickyTarget or not stickyTarget.Character then return end
-    local hrp = stickyTarget.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local predicted = hrp.Position + hrp.Velocity * predictionTime
-    local speed = math.clamp(humanRobotValue/100, 0.02, 1)
-
-    Camera.CFrame = Camera.CFrame:Lerp(
-        CFrame.new(Camera.CFrame.Position, predicted),
-        speed
-    )
 end)
 
 --// ESP SYSTEM ================================================
@@ -231,6 +147,31 @@ local function clearESP(p)
     end
 end
 
+local function clearAllESP()
+    for p,_ in pairs(espCache) do
+        clearESP(p)
+    end
+end
+
+espBtn.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espBtn.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+    clearAllESP()
+end)
+
+nameBtn.MouseButton1Click:Connect(function()
+    nameESPEnabled = not nameESPEnabled
+    nameBtn.Text = nameESPEnabled and "NAME ESP: ON" or "NAME ESP: OFF"
+    clearAllESP()
+end)
+
+skelBtn.MouseButton1Click:Connect(function()
+    skeletonESPEnabled = not skeletonESPEnabled
+    skelBtn.Text = skeletonESPEnabled and "SKELETON ESP: ON" or "SKELETON ESP: OFF"
+    clearAllESP()
+end)
+
+-- Skeleton builder
 local function skeleton(char)
     local beams = {}
     local function link(a,b)
@@ -277,6 +218,43 @@ local function makeESP(p)
     end
 end
 
+--// TARGETING ==================================================
+local function getClosest()
+    local best, dist = nil, math.huge
+    for _,p in pairs(Players:GetPlayers()) do
+        if p ~= LP and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local v,on = Camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
+            if on then
+                local d = (Vector2.new(v.X,v.Y)-UIS:GetMouseLocation()).Magnitude
+                if d < dist then dist = d best = p end
+            end
+        end
+    end
+    return best
+end
+
+--// CAMERA ASSIST =============================================
+RunService.RenderStepped:Connect(function()
+    if not aimEnabled then return end
+
+    if not (stickyEnabled and stickyTarget and stickyTarget.Character) then
+        stickyTarget = getClosest()
+    end
+
+    if not stickyTarget or not stickyTarget.Character then return end
+    local hrp = stickyTarget.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local predicted = hrp.Position + hrp.Velocity * predictionTime
+    local speed = math.clamp(humanRobotValue/100,0.02,1)
+
+    Camera.CFrame = Camera.CFrame:Lerp(
+        CFrame.new(Camera.CFrame.Position, predicted),
+        speed
+    )
+end)
+
+-- ESP update loop
 RunService.RenderStepped:Connect(function()
     for _,p in pairs(Players:GetPlayers()) do
         if p ~= LP then
