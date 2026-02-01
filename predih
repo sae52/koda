@@ -1,0 +1,196 @@
+--// SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+
+local LP = Players.LocalPlayer
+
+--// STATE
+local aimEnabled = false
+local stickyEnabled = false
+local espEnabled = false
+local stickyTarget = nil
+
+local predictionTime = 0.15
+local assistSpeed = 0.08
+
+--// UI =========================================================
+local gui = Instance.new("ScreenGui", LP.PlayerGui)
+gui.Name = "TabbedUI"
+gui.ResetOnSpawn = false
+
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.fromOffset(360, 300)
+main.Position = UDim2.fromScale(0.5, 0.5)
+main.AnchorPoint = Vector2.new(0.5, 0.5)
+main.BackgroundColor3 = Color3.fromRGB(15,15,15)
+main.BorderSizePixel = 0
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,12)
+
+-- Tabs
+local tabBar = Instance.new("Frame", main)
+tabBar.Size = UDim2.fromScale(1,0.15)
+tabBar.BackgroundTransparency = 1
+
+local aimTab = Instance.new("TextButton", tabBar)
+aimTab.Size = UDim2.fromScale(0.5,1)
+aimTab.Text = "AIM"
+aimTab.Font = Enum.Font.GothamBold
+aimTab.TextSize = 18
+aimTab.BackgroundColor3 = Color3.fromRGB(25,25,25)
+aimTab.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", aimTab)
+
+local espTab = aimTab:Clone()
+espTab.Parent = tabBar
+espTab.Position = UDim2.fromScale(0.5,0)
+espTab.Text = "ESP"
+
+-- Content frames
+local AimFrame = Instance.new("Frame", main)
+AimFrame.Position = UDim2.fromScale(0,0.15)
+AimFrame.Size = UDim2.fromScale(1,0.85)
+AimFrame.BackgroundTransparency = 1
+
+local ESPFrame = AimFrame:Clone()
+ESPFrame.Parent = main
+ESPFrame.Visible = false
+
+-- Helper button
+local function makeButton(parent, text, y)
+    local b = Instance.new("TextButton", parent)
+    b.Size = UDim2.fromScale(0.9,0.15)
+    b.Position = UDim2.fromScale(0.05,y)
+    b.Text = text
+    b.Font = Enum.Font.Gotham
+    b.TextScaled = true
+    b.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    b.TextColor3 = Color3.new(1,1,1)
+    Instance.new("UICorner", b)
+    return b
+end
+
+-- AIM UI
+local aimToggle = makeButton(AimFrame,"AIM: OFF",0.05)
+local stickyToggle = makeButton(AimFrame,"STICKY: OFF",0.25)
+
+-- ESP UI
+local espToggle = makeButton(ESPFrame,"ESP: OFF",0.05)
+
+-- Tab switching
+aimTab.MouseButton1Click:Connect(function()
+    AimFrame.Visible = true
+    ESPFrame.Visible = false
+end)
+
+espTab.MouseButton1Click:Connect(function()
+    AimFrame.Visible = false
+    ESPFrame.Visible = true
+end)
+
+-- Toggles
+aimToggle.MouseButton1Click:Connect(function()
+    aimEnabled = not aimEnabled
+    aimToggle.Text = aimEnabled and "AIM: ON" or "AIM: OFF"
+end)
+
+stickyToggle.MouseButton1Click:Connect(function()
+    stickyEnabled = not stickyEnabled
+    stickyToggle.Text = stickyEnabled and "STICKY: ON" or "STICKY: OFF"
+    if not stickyEnabled then
+        stickyTarget = nil
+    end
+end)
+
+espToggle.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espToggle.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+end)
+
+--// TARGETING ==================================================
+local function getClosestTarget()
+    local closest, dist = nil, math.huge
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local pos, onScreen = Camera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+            if onScreen then
+                local d = (Vector2.new(pos.X,pos.Y) - UIS:GetMouseLocation()).Magnitude
+                if d < dist then
+                    dist = d
+                    closest = plr
+                end
+            end
+        end
+    end
+    return closest
+end
+
+--// CAMERA ASSIST =============================================
+RunService.RenderStepped:Connect(function()
+    if not aimEnabled then return end
+
+    if stickyEnabled and stickyTarget and stickyTarget.Character then
+        -- keep target
+    else
+        stickyTarget = getClosestTarget()
+    end
+
+    if not stickyTarget or not stickyTarget.Character then return end
+    local hrp = stickyTarget.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local predicted = hrp.Position + (hrp.Velocity * predictionTime)
+    local camPos = Camera.CFrame.Position
+    local targetCF = CFrame.new(camPos, predicted)
+
+    Camera.CFrame = Camera.CFrame:Lerp(targetCF, assistSpeed)
+end)
+
+--// ESP SYSTEM ================================================
+local espObjects = {}
+
+local function clearESP(plr)
+    if espObjects[plr] then
+        for _,v in pairs(espObjects[plr]) do
+            v:Destroy()
+        end
+        espObjects[plr] = nil
+    end
+end
+
+local function createESP(plr)
+    if not plr.Character then return end
+    espObjects[plr] = {}
+
+    -- Name ESP
+    local bill = Instance.new("BillboardGui")
+    bill.Size = UDim2.fromOffset(100,20)
+    bill.StudsOffset = Vector3.new(0,2.5,0)
+    bill.AlwaysOnTop = true
+    bill.Parent = plr.Character.Head
+
+    local txt = Instance.new("TextLabel", bill)
+    txt.Size = UDim2.fromScale(1,1)
+    txt.BackgroundTransparency = 1
+    txt.Text = plr.Name
+    txt.Font = Enum.Font.Gotham
+    txt.TextSize = 12
+    txt.TextColor3 = Color3.new(1,1,1)
+
+    table.insert(espObjects[plr], bill)
+end
+
+RunService.RenderStepped:Connect(function()
+    for _,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LP then
+            if espEnabled then
+                if not espObjects[plr] then
+                    createESP(plr)
+                end
+            else
+                clearESP(plr)
+            end
+        end
+    end
+end)
