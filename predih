@@ -18,7 +18,7 @@ local LockedTarget = nil
 local Prediction = 0.15
 local CamSmooth = 0.25
 
-local LockKey = Enum.KeyCode.T
+local LockKey = Enum.KeyCode.N
 
 --// UI
 local gui = Instance.new("ScreenGui", game.CoreGui)
