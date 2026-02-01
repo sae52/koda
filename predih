@@ -4,91 +4,50 @@ local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
 
---// STATE
+--// STATES
 local UIVisible = true
-local AimEnabled = false
+
+local AimEnabled = true
+local LockEnabled = false
 local StickyEnabled = false
 local LockedTarget = nil
 
-local Prediction = 0.1
-local Smoothness = 0.5 -- human vs robot
-local CamSpeed = 0.5
+local Prediction = 0.15
+local CamSmooth = 0.25
 
-local ESPEnabled = false
-local NameESPEnabled = false
-local SkeletonESPEnabled = false
+local LockKey = Enum.KeyCode.T
 
---// UI SETUP
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-ScreenGui.Name = "CleanAimUI"
+--// UI
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "CleanAimUI"
 
-local Main = Instance.new("Frame", ScreenGui)
-Main.Size = UDim2.fromScale(0.35, 0.4)
-Main.Position = UDim2.fromScale(0.33, 0.3)
-Main.BackgroundColor3 = Color3.fromRGB(15,15,15)
-Main.Active = true
-Main.Draggable = true
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.fromScale(0.35, 0.42)
+main.Position = UDim2.fromScale(0.33, 0.3)
+main.BackgroundColor3 = Color3.fromRGB(15,15,15)
+main.Active = true
+main.Draggable = true
+Instance.new("UICorner", main)
 
-local UICorner = Instance.new("UICorner", Main)
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1,0,0.12,0)
+title.Text = "Aim / Prediction"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
 
---// TITLE
-local Title = Instance.new("TextLabel", Main)
-Title.Size = UDim2.new(1,0,0.12,0)
-Title.Text = "Aim / ESP Panel"
-Title.TextColor3 = Color3.new(1,1,1)
-Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
-
---// TABS
-local Tabs = Instance.new("Frame", Main)
-Tabs.Position = UDim2.fromScale(0,0.12)
-Tabs.Size = UDim2.new(1,0,0.12,0)
-Tabs.BackgroundTransparency = 1
-
-local AimTab = Instance.new("TextButton", Tabs)
-AimTab.Size = UDim2.fromScale(0.5,1)
-AimTab.Text = "AIM"
-
-local ESPTab = Instance.new("TextButton", Tabs)
-ESPTab.Size = UDim2.fromScale(0.5,1)
-ESPTab.Position = UDim2.fromScale(0.5,0)
-ESPTab.Text = "ESP"
-
-for _,b in pairs({AimTab,ESPTab}) do
-	b.BackgroundColor3 = Color3.fromRGB(25,25,25)
-	b.TextColor3 = Color3.new(1,1,1)
-	b.Font = Enum.Font.Gotham
-	b.TextSize = 14
-end
-
---// CONTENT FRAMES
-local AimFrame = Instance.new("Frame", Main)
-AimFrame.Position = UDim2.fromScale(0,0.24)
-AimFrame.Size = UDim2.new(1,0,0.76,0)
-AimFrame.BackgroundTransparency = 1
-
-local ESPFrame = AimFrame:Clone()
-ESPFrame.Parent = Main
-ESPFrame.Visible = false
-
---// TAB LOGIC
-AimTab.MouseButton1Click:Connect(function()
-	AimFrame.Visible = true
-	ESPFrame.Visible = false
-end)
-
-ESPTab.MouseButton1Click:Connect(function()
-	AimFrame.Visible = false
-	ESPFrame.Visible = true
-end)
+local frame = Instance.new("Frame", main)
+frame.Position = UDim2.fromScale(0,0.12)
+frame.Size = UDim2.new(1,0,0.88,0)
+frame.BackgroundTransparency = 1
 
 --// UI HELPERS
-local function Button(parent,text,y,callback)
-	local b = Instance.new("TextButton", parent)
+local function button(text,y,callback)
+	local b = Instance.new("TextButton", frame)
 	b.Size = UDim2.fromScale(0.9,0.12)
 	b.Position = UDim2.fromScale(0.05,y)
 	b.Text = text
@@ -100,32 +59,32 @@ local function Button(parent,text,y,callback)
 	return b
 end
 
-local function Slider(parent,text,y,min,max,default,changed)
-	local Frame = Instance.new("Frame", parent)
-	Frame.Size = UDim2.fromScale(0.9,0.14)
-	Frame.Position = UDim2.fromScale(0.05,y)
-	Frame.BackgroundTransparency = 1
+local function slider(text,y,min,max,value,callback)
+	local f = Instance.new("Frame", frame)
+	f.Size = UDim2.fromScale(0.9,0.16)
+	f.Position = UDim2.fromScale(0.05,y)
+	f.BackgroundTransparency = 1
 
-	local Label = Instance.new("TextLabel", Frame)
-	Label.Size = UDim2.fromScale(1,0.4)
-	Label.Text = text.." : "..default
-	Label.TextColor3 = Color3.new(1,1,1)
-	Label.BackgroundTransparency = 1
-	Label.Font = Enum.Font.Gotham
-	Label.TextSize = 13
+	local label = Instance.new("TextLabel", f)
+	label.Size = UDim2.fromScale(1,0.4)
+	label.Text = text.." : "..value
+	label.TextColor3 = Color3.new(1,1,1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 13
 
-	local Bar = Instance.new("Frame", Frame)
-	Bar.Position = UDim2.fromScale(0,0.6)
-	Bar.Size = UDim2.fromScale(1,0.3)
-	Bar.BackgroundColor3 = Color3.fromRGB(40,40,40)
+	local bar = Instance.new("Frame", f)
+	bar.Position = UDim2.fromScale(0,0.6)
+	bar.Size = UDim2.fromScale(1,0.25)
+	bar.BackgroundColor3 = Color3.fromRGB(40,40,40)
 
-	local Fill = Instance.new("Frame", Bar)
-	Fill.Size = UDim2.fromScale((default-min)/(max-min),1)
-	Fill.BackgroundColor3 = Color3.fromRGB(120,120,255)
+	local fill = Instance.new("Frame", bar)
+	fill.Size = UDim2.fromScale((value-min)/(max-min),1)
+	fill.BackgroundColor3 = Color3.fromRGB(120,120,255)
 
 	local dragging = false
 
-	Bar.InputBegan:Connect(function(i)
+	bar.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
 		end
@@ -139,88 +98,82 @@ local function Slider(parent,text,y,min,max,default,changed)
 
 	RunService.RenderStepped:Connect(function()
 		if dragging then
-			local x = (Mouse.X - Bar.AbsolutePosition.X) / Bar.AbsoluteSize.X
-			x = math.clamp(x,0,1)
-			Fill.Size = UDim2.fromScale(x,1)
-			local val = math.floor((min + (max-min)*x)*100)/100
-			Label.Text = text.." : "..val
-			changed(val)
+			local x = math.clamp((Mouse.X - bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
+			fill.Size = UDim2.fromScale(x,1)
+			local val = math.floor((min+(max-min)*x)*100)/100
+			label.Text = text.." : "..val
+			callback(val)
 		end
 	end)
 end
 
---// AIM UI
-Button(AimFrame,"Aim Enabled",0,function()
-	AimEnabled = not AimEnabled
-end)
-
-Button(AimFrame,"Sticky Lock",0.14,function()
+--// UI CONTROLS
+button("Sticky Lock",0,function()
 	StickyEnabled = not StickyEnabled
-	if not StickyEnabled then LockedTarget = nil end
+	if not StickyEnabled then
+		LockedTarget = nil
+	end
 end)
 
-Slider(AimFrame,"Prediction",0.3,0,1,Prediction,function(v) Prediction = v end)
-Slider(AimFrame,"Human vs Robot",0.46,0,1,Smoothness,function(v) Smoothness = v end)
-Slider(AimFrame,"Camera Speed",0.62,0,1,CamSpeed,function(v) CamSpeed = v end)
-
---// ESP UI
-Button(ESPFrame,"ESP Enabled",0,function()
-	ESPEnabled = not ESPEnabled
+slider("Prediction Amount",0.25,0,1,Prediction,function(v)
+	Prediction = v
 end)
 
-Button(ESPFrame,"Name ESP",0.14,function()
-	NameESPEnabled = not NameESPEnabled
+slider("Camera Smooth",0.48,0,1,CamSmooth,function(v)
+	CamSmooth = v
 end)
 
-Button(ESPFrame,"Skeleton ESP",0.28,function()
-	SkeletonESPEnabled = not SkeletonESPEnabled
-end)
-
---// INPUT KEYS
-UIS.InputBegan:Connect(function(i,gp)
+--// INPUT
+UIS.InputBegan:Connect(function(input,gp)
 	if gp then return end
 
-	if i.KeyCode == Enum.KeyCode.RightAlt then
+	if input.KeyCode == Enum.KeyCode.RightAlt then
 		UIVisible = not UIVisible
-		ScreenGui.Enabled = UIVisible
+		gui.Enabled = UIVisible
 	end
 
-	if i.KeyCode == Enum.KeyCode.T then
-		AimEnabled = not AimEnabled
-		if not AimEnabled then LockedTarget = nil end
+	if input.KeyCode == LockKey then
+		LockEnabled = not LockEnabled
+		if not LockEnabled then
+			LockedTarget = nil
+		end
 	end
 end)
 
---// TARGETING
-local function GetClosest()
+--// TARGET FIND
+local function getClosest()
 	local closest,dist
 	for _,p in pairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-			local pos,_ = Camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
-			local d = (Vector2.new(pos.X,pos.Y) - Vector2.new(Mouse.X,Mouse.Y)).Magnitude
-			if not dist or d < dist then
-				dist = d
-				closest = p
+		if p ~= LP and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+			local pos,vis = Camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
+			if vis then
+				local d = (Vector2.new(pos.X,pos.Y)-Vector2.new(Mouse.X,Mouse.Y)).Magnitude
+				if not dist or d < dist then
+					dist = d
+					closest = p
+				end
 			end
 		end
 	end
 	return closest
 end
 
---// AIM LOOP
+--// AIM LOOP (STICKY IS CORRECT)
 RunService.RenderStepped:Connect(function()
-	if not AimEnabled then return end
+	if not AimEnabled or not LockEnabled then return end
 
-	if StickyEnabled and LockedTarget then
-		-- keep
-	else
-		LockedTarget = GetClosest()
+	if not LockedTarget then
+		LockedTarget = getClosest()
 	end
 
 	if LockedTarget and LockedTarget.Character and LockedTarget.Character:FindFirstChild("HumanoidRootPart") then
 		local hrp = LockedTarget.Character.HumanoidRootPart
-		local predicted = hrp.Position + hrp.Velocity * Prediction
-		local cf = CFrame.new(Camera.CFrame.Position, predicted)
-		Camera.CFrame = Camera.CFrame:Lerp(cf, CamSpeed * (1-Smoothness))
+
+		local targetPos = hrp.Position + (hrp.Velocity * Prediction)
+
+		Camera.CFrame = Camera.CFrame:Lerp(
+			CFrame.new(Camera.CFrame.Position, targetPos),
+			CamSmooth
+		)
 	end
 end)
